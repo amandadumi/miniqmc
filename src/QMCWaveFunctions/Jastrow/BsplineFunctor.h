@@ -32,7 +32,10 @@
 #define QMCPLUSPLUS_BSPLINE_FUNCTOR_H
 #include "Numerics/OptimizableFunctorBase.h"
 #include "CPU/SIMD/aligned_allocator.hpp"
+#include <autodiff/reverse/var.hpp>
+#include <autodiff/reverse/var/eigen.hpp>
 #include <cstdio>
+#include <eigen3/Eigen/src/Core/Matrix.h>
 
 /*!
  * @file BsplineFunctor.h
@@ -40,6 +43,9 @@
 
 namespace qmcplusplus
 {
+using namespace autodiff;
+
+
 template<class T>
 struct BsplineFunctor : public OptimizableFunctorBase
 {
@@ -144,7 +150,7 @@ struct BsplineFunctor : public OptimizableFunctorBase
       const T* _distArray,  
       T* restrict _valArray,
       T* restrict _gradArray, 
-      T* restrict _laplArray, 
+      T* restrict _90laplArray, 
       T* restrict distArrayCompressed, int* restrict distIndices ) const;
   // clang-format on
 
@@ -183,6 +189,44 @@ struct BsplineFunctor : public OptimizableFunctorBase
     // clang-format on
   }
 
+  inline var evaluate_autodiff(real_type r, TinyVector<real_type,16>A){
+    var r_ad = r;
+    if (r >= cutoff_radius)
+      return 0.0;
+    r *= DeltaRInv;
+    real_type ipart, t;
+    t     = std::modf(r, &ipart);
+    int i = (int)ipart;
+    var t_ad = t;
+    var tp[4];
+
+    tp[0] = t * t * t;
+    tp[1] = t * t;
+    tp[2] = t;
+    tp[3] = 1.0;
+    // clang-format off
+    // using Eigen::VectorXvar;
+    VectorXvar A_ad(16);
+    for (int i =0; i<16;i++){
+      A_ad << A[i];
+    }
+    return
+      (SplineCoefs[i+0]*(A_ad[ 0]*tp[0] + A_ad[ 1]*tp[1] + A_ad[ 2]*tp[2] + A_ad[ 3]*tp[3])+
+       SplineCoefs[i+1]*(A_ad[ 4]*tp[0] + A_ad[ 5]*tp[1] + A_ad[ 6]*tp[2] + A_ad[ 7]*tp[3])+
+       SplineCoefs[i+2]*(A_ad[ 8]*tp[0] + A_ad[ 9]*tp[1] + A_ad[10]*tp[2] + A_ad[11]*tp[3])+
+       SplineCoefs[i+3]*(A_ad[12]*tp[0] + A_ad[13]*tp[1] + A_ad[14]*tp[2] + A_ad[15]*tp[3]));
+    // clang-format on
+
+  }
+
+
+  inline real_type evaluate_dudr_autodiff(real_type r){
+    var r_ad = r;
+    var u = evaluate_autodiff(r_ad, A);
+    auto [dudr_ad] =  derivatives(u, wrt(r_ad));
+    return (double)dudr_ad;
+    }
+  
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2)
   {
     if (r >= cutoff_radius)
@@ -205,11 +249,15 @@ struct BsplineFunctor : public OptimizableFunctorBase
               SplineCoefs[i+1]*(d2A[ 4]*tp[0] + d2A[ 5]*tp[1] + d2A[ 6]*tp[2] + d2A[ 7]*tp[3])+
               SplineCoefs[i+2]*(d2A[ 8]*tp[0] + d2A[ 9]*tp[1] + d2A[10]*tp[2] + d2A[11]*tp[3])+
               SplineCoefs[i+3]*(d2A[12]*tp[0] + d2A[13]*tp[1] + d2A[14]*tp[2] + d2A[15]*tp[3]));
-    dudr = DeltaRInv *
-           (SplineCoefs[i+0]*(dA[ 0]*tp[0] + dA[ 1]*tp[1] + dA[ 2]*tp[2] + dA[ 3]*tp[3])+
-            SplineCoefs[i+1]*(dA[ 4]*tp[0] + dA[ 5]*tp[1] + dA[ 6]*tp[2] + dA[ 7]*tp[3])+
-            SplineCoefs[i+2]*(dA[ 8]*tp[0] + dA[ 9]*tp[1] + dA[10]*tp[2] + dA[11]*tp[3])+
-            SplineCoefs[i+3]*(dA[12]*tp[0] + dA[13]*tp[1] + dA[14]*tp[2] + dA[15]*tp[3]));
+    #ifdef QMC_AD
+      dudr = evaluate_dudr_autodiff(r,A);
+    #else
+      dudr = DeltaRInv *
+             (SplineCoefs[i+0]*(dA[ 0]*tp[0] + dA[ 1]*tp[1] + dA[ 2]*tp[2] + dA[ 3]*tp[3])+
+              SplineCoefs[i+1]*(dA[ 4]*tp[0] + dA[ 5]*tp[1] + dA[ 6]*tp[2] + dA[ 7]*tp[3])+
+              SplineCoefs[i+2]*(dA[ 8]*tp[0] + dA[ 9]*tp[1] + dA[10]*tp[2] + dA[11]*tp[3])+
+              SplineCoefs[i+3]*(dA[12]*tp[0] + dA[13]*tp[1] + dA[14]*tp[2] + dA[15]*tp[3]));
+    #endif
     return
       (SplineCoefs[i+0]*(A[ 0]*tp[0] + A[ 1]*tp[1] + A[ 2]*tp[2] + A[ 3]*tp[3])+
        SplineCoefs[i+1]*(A[ 4]*tp[0] + A[ 5]*tp[1] + A[ 6]*tp[2] + A[ 7]*tp[3])+

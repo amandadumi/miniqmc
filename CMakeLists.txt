@@ -141,6 +141,7 @@ set(QMC_BUILD_STATIC
 set(ENABLE_TIMERS
     1
     CACHE BOOL "Enable internal timers")
+option(QMC_AD "Enable/disable AD" ON)
 option(ENABLE_OFFLOAD "Enable OpenMP offload" OFF)
 option(QMC_ENABLE_ROCM "Enable GPU support through ROCM" OFF)
 if(QMC_ENABLE_ROCM)
@@ -182,7 +183,13 @@ endif()
 ######################################################################
 #SET(ENABLE_PHDF5 0 CACHE BOOL "Enable phdf5 for output")
 #SET(HAVE_LIBHDF5 0)
-
+if (QMC_AD)
+    find_package(autodiff REQUIRED CONFIG)
+    message(STATUS "QMC_AD found dir ${autodiff_DIR}")
+    message(STATUS "QMC_AD found ${autodiff_FOUND}")
+    get_property(importTargetsAfter DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
+    message(STATUS "QMC_AD imported targets ${importTargetsAfter}")
+endif()
 ######################################################
 # Git information (see src/CMakeLists.txt for the
 # command to get repository information)

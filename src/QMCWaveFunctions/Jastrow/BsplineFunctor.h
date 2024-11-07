@@ -224,11 +224,12 @@ struct BsplineFunctor : public OptimizableFunctorBase
     var r_ad = r;
     var u = evaluate_autodiff(r_ad, A);
     auto [dudr_ad] =  derivatives(u, wrt(r_ad));
-    return (double)dudr_ad;
+    return dudr_ad;
     }
   
   inline real_type evaluate(real_type r, real_type& dudr, real_type& d2udr2)
   {
+    std::cout <<"in bspline evaluate"<<std::endl;
     if (r >= cutoff_radius)
     {
       dudr = d2udr2 = 0.0;
@@ -257,6 +258,7 @@ struct BsplineFunctor : public OptimizableFunctorBase
               SplineCoefs[i+1]*(dA[ 4]*tp[0] + dA[ 5]*tp[1] + dA[ 6]*tp[2] + dA[ 7]*tp[3])+
               SplineCoefs[i+2]*(dA[ 8]*tp[0] + dA[ 9]*tp[1] + dA[10]*tp[2] + dA[11]*tp[3])+
               SplineCoefs[i+3]*(dA[12]*tp[0] + dA[13]*tp[1] + dA[14]*tp[2] + dA[15]*tp[3]));
+              
     #endif
     return
       (SplineCoefs[i+0]*(A[ 0]*tp[0] + A[ 1]*tp[1] + A[ 2]*tp[2] + A[ 3]*tp[3])+
@@ -372,13 +374,20 @@ inline void BsplineFunctor<T>::evaluateVGL(const int iat,
        sCoef2*( d2A[10]*tp2 + d2A[11])+
        sCoef3*( d2A[14]*tp2 + d2A[15]));
 
-    gradArray[iScatter] = DeltaRInv * rinv *
-      (sCoef0*( dA[ 1]*tp1 + dA[ 2]*tp2 + dA[ 3])+
-       sCoef1*( dA[ 5]*tp1 + dA[ 6]*tp2 + dA[ 7])+
-       sCoef2*( dA[ 9]*tp1 + dA[10]*tp2 + dA[11])+
-       sCoef3*( dA[13]*tp1 + dA[14]*tp2 + dA[15]));
+    // std::cout << "in ealuate vgl" <<std::endl;
+    #ifdef QMC_AD
+      std::cout << "in here!" <<std::endl;
+      dudr = evaluate_dudr_autodiff(r,A);
+    #else
+    gradArray[iScatter] = evaluate_dudr_autodiff(r);
+    std::cout << gradArray[iScatter] << std::endl;
+    // gradArray[iScatter] = DeltaRInv * rinv *
+    //   (sCoef0*( dA[ 1]*tp1 + dA[ 2]*tp2 + dA[ 3])+
+    //    sCoef1*( dA[ 5]*tp1 + dA[ 6]*tp2 + dA[ 7])+
+    //    sCoef2*( dA[ 9]*tp1 + dA[10]*tp2 + dA[11])+
+    //    sCoef3*( dA[13]*tp1 + dA[14]*tp2 + dA[15]));
 
-    valArray[iScatter] = (sCoef0*(A[ 0]*tp0 + A[ 1]*tp1 + A[ 2]*tp2 + A[ 3])+
+    valArray[iScatter] = (sCoef0*(A[ 0]*tp0 + A[ 1]*tp1 + A[ 2]*tp2 + A[ 3]) +
         sCoef1*(A[ 4]*tp0 + A[ 5]*tp1 + A[ 6]*tp2 + A[ 7])+
         sCoef2*(A[ 8]*tp0 + A[ 9]*tp1 + A[10]*tp2 + A[11])+
         sCoef3*(A[12]*tp0 + A[13]*tp1 + A[14]*tp2 + A[15]));
